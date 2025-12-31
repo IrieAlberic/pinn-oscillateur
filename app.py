@@ -1,131 +1,141 @@
-# app.py – Démo PINN complète (EDO Oscillateur + Burgers) – Streamlit Community Cloud
-# Compatible avec sauvegarde .weights.h5 (Keras / TensorFlow)
-
 import streamlit as st
-import deepxde as dde
+import torch
+import torch.nn as nn
 import numpy as np
 import matplotlib.pyplot as plt
-import os
 
-st.set_page_config(page_title="PINN Démo – EDO + Burgers", layout="wide")
+# Configuration de la page
+st.set_page_config(page_title="PINN – Projet Final", layout="wide")
 
-st.title("Physics-Informed Neural Networks (PINNs) – Projet Final")
-st.markdown("EDO : Oscillateur harmonique | EDP : Équation de Burgers")
+st.title("Physics-Informed Neural Networks (PINNs)")
+st.markdown("Implémentation from scratch avec PyTorch – Résolution d'une EDO et de l'équation de Burgers")
 
-# ────────────────────────────────────────────────
-# Chargement EDO (Oscillateur)
-# ────────────────────────────────────────────────
+# Définition des modèles (identique au notebook)
+class PINN_EDO(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(1, 60), nn.Tanh(),
+            nn.Linear(60, 60), nn.Tanh(),
+            nn.Linear(60, 60), nn.Tanh(),
+            nn.Linear(60, 60), nn.Tanh(),
+            nn.Linear(60, 2)
+        )
+
+    def forward(self, t):
+        return self.net(t)
+
+class PINN_Burgers(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(2, 30), nn.Tanh(),
+            nn.Linear(30, 30), nn.Tanh(),
+            nn.Linear(30, 30), nn.Tanh(),
+            nn.Linear(30, 30), nn.Tanh(),
+            nn.Linear(30, 30), nn.Tanh(),
+            nn.Linear(30, 1)
+        )
+
+    def forward(self, xt):
+        return self.net(xt)
+
+# Chargement des modèles entraînés
 @st.cache_resource
-def load_edo_model():
-    def ode_system(x, y):
-        y1, y2 = y[:, 0:1], y[:, 1:2]
-        dy1_dt = dde.grad.jacobian(y, x, i=0)      # ta version corrigée
-        dy2_dt = dde.grad.jacobian(y, x, i=1)
-        return [dy1_dt - y2, dy2_dt + y1]
-
-    def boundary_initial(_, on_initial):
-        return on_initial
-
-    geom = dde.geometry.TimeDomain(0, 10)
-    ic1 = dde.icbc.IC(geom, lambda x: 0.0, boundary_initial, component=0)
-    ic2 = dde.icbc.IC(geom, lambda x: 1.0, boundary_initial, component=1)
-
-    data = dde.data.PDE(geom, ode_system, [ic1, ic2], num_domain=400, num_boundary=2)
-
-    net = dde.nn.FNN([1] + [60]*4 + [2], "tanh", "Glorot uniform")
-    model = dde.Model(data, net)
-
-    weights_path = "models/ode/model_ode.weights.h5"   # ← adapte si tu préfères une variante numérotée
-    if not os.path.exists(weights_path):
-        st.error(f"Fichier EDO introuvable : {weights_path}")
+def load_models():
+    model_edo = PINN_EDO()
+    try:
+        model_edo.load_state_dict(torch.load("models/ode/model_ode.pt", map_location="cpu"))
+        model_edo.eval()
+    except FileNotFoundError:
+        st.error("Fichier model_ode.pt introuvable dans le dossier models/ode/")
+        st.stop()
+    except Exception as e:
+        st.error(f"Erreur lors du chargement du modèle EDO : {str(e)}")
         st.stop()
 
-    model.net.load_weights(weights_path)
-    return model
-
-# ────────────────────────────────────────────────
-# Chargement Burgers
-# ────────────────────────────────────────────────
-@st.cache_resource
-def load_burgers_model():
-    def pde_burgers(x, u):
-        du_x = dde.grad.jacobian(u, x, j=0)
-        du_t = dde.grad.jacobian(u, x, j=1)
-        du_xx = dde.grad.hessian(u, x, i=0, j=0)
-        return du_t + u * du_x - (0.01 / np.pi) * du_xx
-
-    geom_x = dde.geometry.Interval(-1, 1)
-    geom_t = dde.geometry.TimeDomain(0, 1)
-    geomtime = dde.geometry.GeometryXTime(geom_x, geom_t)
-
-    bc = dde.icbc.DirichletBC(geomtime, lambda x: 0, lambda _, on_b: on_b)
-    ic = dde.icbc.IC(geomtime, lambda x: -np.sin(np.pi * x[:, 0:1]), lambda _, on_i: on_i)
-
-    data = dde.data.TimePDE(geomtime, pde_burgers, [bc, ic],
-                            num_domain=2800, num_boundary=100, num_initial=200)
-
-    net = dde.nn.FNN([2] + [30]*5 + [1], "tanh", "Glorot normal")
-    model = dde.Model(data, net)
-
-    weights_path = "models/burgers/model_burgers-13577.weights.h5"
-    if not os.path.exists(weights_path):
-        st.error(f"Fichier Burgers introuvable : {weights_path}")
+    model_burgers = PINN_Burgers()
+    try:
+        model_burgers.load_state_dict(torch.load("models/burgers/model_burgers.pt", map_location="cpu"))
+        model_burgers.eval()
+    except FileNotFoundError:
+        st.error("Fichier model_burgers.pt introuvable dans le dossier models/burgers/")
+        st.stop()
+    except Exception as e:
+        st.error(f"Erreur lors du chargement du modèle Burgers : {str(e)}")
         st.stop()
 
-    model.net.load_weights(weights_path)
-    return model
+    return model_edo, model_burgers
 
-# ────────────────────────────────────────────────
-# Interface avec onglets
-# ────────────────────────────────────────────────
+model_edo, model_burgers = load_models()
+st.success("Modèles chargés avec succès")
+
+# Onglets pour les deux cas
 tab1, tab2 = st.tabs(["EDO – Oscillateur harmonique", "EDP – Burgers"])
 
 with tab1:
-    try:
-        model_edo = load_edo_model()
-        st.success("Modèle EDO chargé ✓")
+    st.subheader("Oscillateur harmonique (y'' + y = 0)")
 
-        st.sidebar.header("EDO – Contrôles")
-        t_min_edo = st.sidebar.slider("t début", 0.0, 0.0, 0.0, key="edo_tmin")
-        t_max_edo = st.sidebar.slider("t fin", 1.0, 10.0, 10.0, key="edo_tmax")
-        n_pts_edo = st.sidebar.slider("Points", 100, 1000, 400, key="edo_npts")
+    # Contrôles utilisateur
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        t_min = st.slider("Temps de début", 0.0, 0.0, 0.0, key="edo_tmin")
+    with col2:
+        t_max = st.slider("Temps de fin", 1.0, 10.0, 10.0, key="edo_tmax")
+    with col3:
+        n_pts = st.slider("Nombre de points", 100, 1000, 400, key="edo_npts")
 
-        t = np.linspace(t_min_edo, t_max_edo, n_pts_edo)[:, None]
-        pred = model_edo.predict(t)
+    # Prédiction
+    t = np.linspace(t_min, t_max, n_pts).reshape(-1, 1)
+    t_tensor = torch.tensor(t, dtype=torch.float32)
 
-        fig1, ax1 = plt.subplots(figsize=(10, 5))
-        ax1.plot(t, pred[:, 0], 'b-', label="y₁ ≈ sin(t)")
-        ax1.plot(t, pred[:, 1], color='orange', label="y₂ ≈ cos(t)")
-        ax1.set_xlabel("t"); ax1.set_ylabel("Solution"); ax1.grid(True, alpha=0.3); ax1.legend()
-        st.pyplot(fig1)
+    with torch.no_grad():
+        pred = model_edo(t_tensor).numpy()
 
-    except Exception as e:
-        st.error(f"Erreur EDO : {str(e)}")
+    # Affichage du graphique
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.plot(t, pred[:, 0], 'b-', label="y₁(t) ≈ sin(t)")
+    ax.plot(t, pred[:, 1], color='orange', label="y₂(t) ≈ cos(t)")
+    ax.set_xlabel("Temps t")
+    ax.set_ylabel("Solution")
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+    st.pyplot(fig)
 
 with tab2:
-    try:
-        model_burgers = load_burgers_model()
-        st.success("Modèle Burgers chargé ✓")
+    st.subheader("Équation de Burgers")
 
-        st.sidebar.header("Burgers – Contrôles")
-        t_max_b = st.sidebar.slider("Temps max (t)", 0.1, 1.0, 0.99, key="b_tmax")
-        res = st.sidebar.slider("Résolution grille x", 50, 200, 100, key="b_res")
+    # Contrôles utilisateur
+    col1, col2 = st.columns(2)
+    with col1:
+        res_x = st.slider("Résolution grille x", 50, 200, 100, key="burgers_res")
+    with col2:
+        t_max_b = st.slider("Temps max à afficher", 0.1, 1.0, 0.99, key="burgers_tmax")
 
-        x = np.linspace(-1, 1, res)
-        t_vals = np.linspace(0, t_max_b, 40)
-        xx, tt = np.meshgrid(x, t_vals)
-        X = np.vstack((xx.ravel(), tt.ravel())).T
+    # Grille et prédiction
+    x = np.linspace(-1, 1, res_x)
+    t_vals = np.linspace(0, t_max_b, 40)
+    xx, tt = np.meshgrid(x, t_vals)
+    xt = np.vstack([xx.ravel(), tt.ravel()]).T
+    xt_tensor = torch.tensor(xt, dtype=torch.float32)
 
-        u_pred = model_burgers.predict(X).reshape(xx.shape)
+    with torch.no_grad():
+        u = model_burgers(xt_tensor).numpy().reshape(xx.shape)
 
-        fig2, ax2 = plt.subplots(figsize=(10, 6))
-        cont = ax2.contourf(xx, tt, u_pred, levels=40, cmap='viridis')
-        fig2.colorbar(cont, ax=ax2)
-        ax2.set_title("Solution u(x,t) – Burgers (PINN)")
-        ax2.set_xlabel("x"); ax2.set_ylabel("t")
-        st.pyplot(fig2)
+    # Affichage du graphique
+    fig, ax = plt.subplots(figsize=(10, 6))
+    cont = ax.contourf(xx, tt, u, levels=40, cmap='viridis')
+    plt.colorbar(cont)
+    ax.set_xlabel("x")
+    ax.set_ylabel("t")
+    ax.set_title("Solution u(x,t) – PINN Burgers")
+    st.pyplot(fig)
 
-    except Exception as e:
-        st.error(f"Erreur Burgers : {str(e)}")
-
-st.markdown("**Projet réalisé avec DeepXDE – Déploiement Streamlit**")
+# Pied de page
+st.markdown(
+    """
+    **Note** : Modèles entraînés from scratch en PyTorch.  
+    Notebook complet disponible sur demande.  
+    Projet réalisé dans le cadre du cours de Machine Learning.
+    """
+)

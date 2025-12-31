@@ -1,6 +1,5 @@
-streamlit>=1.30
-deepxde==1.11.0
-numpy>=1.23
-matplotlib>=3.7
-gdown>=5.0
-tensorflow>=2.15  
+streamlit>=1.35.0
+torch>=2.0.0
+numpy>=1.23.0
+matplotlib>=3.7.0
+scipy>=1.10.0
