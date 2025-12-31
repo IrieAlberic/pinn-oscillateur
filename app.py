@@ -48,7 +48,7 @@ def load_models():
         model_edo.load_state_dict(torch.load("models/ode/model_ode.pt", map_location="cpu"))
         model_edo.eval()
     except FileNotFoundError:
-        st.error("Fichier model_ode.pt introuvable dans models/ode/")
+        st.error("Fichier model_ode.pt introuvable dans le dossier models/ode/")
         st.stop()
     except Exception as e:
         st.error(f"Erreur chargement EDO : {str(e)}")
@@ -59,7 +59,7 @@ def load_models():
         model_burgers.load_state_dict(torch.load("models/burgers/model_burgers.pt", map_location="cpu"))
         model_burgers.eval()
     except FileNotFoundError:
-        st.error("Fichier model_burgers.pt introuvable dans models/burgers/")
+        st.error("Fichier model_burgers.pt introuvable dans le dossier models/burgers/")
         st.stop()
     except Exception as e:
         st.error(f"Erreur chargement Burgers : {str(e)}")
@@ -79,15 +79,15 @@ with tab1:
     # Contrôles utilisateur
     col1, col2, col3 = st.columns(3)
     with col1:
-        t_min = st.slider("Temps début", 0.0, 10.0, 0.0, key="edo_tmin")  # Min 0.0, Max 10.0
+        t_min = st.slider("Temps de début", 0.0, 10.0, 0.0, key="edo_tmin")  # intervalle valide
     with col2:
-        t_max = st.slider("Temps fin", 0.0, 10.0, 10.0, key="edo_tmax")  # Min 0.0, Max 10.0
+        t_max = st.slider("Temps de fin", 0.0, 10.0, 10.0, key="edo_tmax")  # intervalle valide
     with col3:
         n_pts = st.slider("Nombre de points", 100, 1000, 400, key="edo_npts")
 
     # Vérification min < max
     if t_min >= t_max:
-        st.error("Le temps début doit être inférieur au temps fin.")
+        st.error("Le temps de début doit être strictement inférieur au temps de fin.")
     else:
         # Prédiction
         t = np.linspace(t_min, t_max, n_pts).reshape(-1, 1)
