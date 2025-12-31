@@ -40,7 +40,7 @@ class PINN_Burgers(nn.Module):
     def forward(self, xt):
         return self.net(xt)
 
-# Chargement des modèles entraînés
+# Chargement des modèles
 @st.cache_resource
 def load_models():
     model_edo = PINN_EDO()
@@ -48,10 +48,10 @@ def load_models():
         model_edo.load_state_dict(torch.load("models/ode/model_ode.pt", map_location="cpu"))
         model_edo.eval()
     except FileNotFoundError:
-        st.error("Fichier model_ode.pt introuvable dans le dossier models/ode/")
+        st.error("Fichier model_ode.pt introuvable dans models/ode/")
         st.stop()
     except Exception as e:
-        st.error(f"Erreur lors du chargement du modèle EDO : {str(e)}")
+        st.error(f"Erreur chargement EDO : {str(e)}")
         st.stop()
 
     model_burgers = PINN_Burgers()
@@ -59,10 +59,10 @@ def load_models():
         model_burgers.load_state_dict(torch.load("models/burgers/model_burgers.pt", map_location="cpu"))
         model_burgers.eval()
     except FileNotFoundError:
-        st.error("Fichier model_burgers.pt introuvable dans le dossier models/burgers/")
+        st.error("Fichier model_burgers.pt introuvable dans models/burgers/")
         st.stop()
     except Exception as e:
-        st.error(f"Erreur lors du chargement du modèle Burgers : {str(e)}")
+        st.error(f"Erreur chargement Burgers : {str(e)}")
         st.stop()
 
     return model_edo, model_burgers
@@ -70,7 +70,7 @@ def load_models():
 model_edo, model_burgers = load_models()
 st.success("Modèles chargés avec succès")
 
-# Onglets pour les deux cas
+# Onglets
 tab1, tab2 = st.tabs(["EDO – Oscillateur harmonique", "EDP – Burgers"])
 
 with tab1:
@@ -79,28 +79,32 @@ with tab1:
     # Contrôles utilisateur
     col1, col2, col3 = st.columns(3)
     with col1:
-        t_min = st.slider("Temps de début", 0.0, 0.0, 0.0, key="edo_tmin")
+        t_min = st.slider("Temps début", 0.0, 10.0, 0.0, key="edo_tmin")  # Min 0.0, Max 10.0
     with col2:
-        t_max = st.slider("Temps de fin", 1.0, 10.0, 10.0, key="edo_tmax")
+        t_max = st.slider("Temps fin", 0.0, 10.0, 10.0, key="edo_tmax")  # Min 0.0, Max 10.0
     with col3:
         n_pts = st.slider("Nombre de points", 100, 1000, 400, key="edo_npts")
 
-    # Prédiction
-    t = np.linspace(t_min, t_max, n_pts).reshape(-1, 1)
-    t_tensor = torch.tensor(t, dtype=torch.float32)
+    # Vérification min < max
+    if t_min >= t_max:
+        st.error("Le temps début doit être inférieur au temps fin.")
+    else:
+        # Prédiction
+        t = np.linspace(t_min, t_max, n_pts).reshape(-1, 1)
+        t_tensor = torch.tensor(t, dtype=torch.float32)
 
-    with torch.no_grad():
-        pred = model_edo(t_tensor).numpy()
+        with torch.no_grad():
+            pred = model_edo(t_tensor).numpy()
 
-    # Affichage du graphique
-    fig, ax = plt.subplots(figsize=(10, 5))
-    ax.plot(t, pred[:, 0], 'b-', label="y₁(t) ≈ sin(t)")
-    ax.plot(t, pred[:, 1], color='orange', label="y₂(t) ≈ cos(t)")
-    ax.set_xlabel("Temps t")
-    ax.set_ylabel("Solution")
-    ax.grid(True, alpha=0.3)
-    ax.legend()
-    st.pyplot(fig)
+        # Affichage du graphique
+        fig, ax = plt.subplots(figsize=(10, 5))
+        ax.plot(t, pred[:, 0], 'b-', label="y₁(t) ≈ sin(t)")
+        ax.plot(t, pred[:, 1], color='orange', label="y₂(t) ≈ cos(t)")
+        ax.set_xlabel("Temps t")
+        ax.set_ylabel("Solution")
+        ax.grid(True, alpha=0.3)
+        ax.legend()
+        st.pyplot(fig)
 
 with tab2:
     st.subheader("Équation de Burgers")
@@ -110,7 +114,7 @@ with tab2:
     with col1:
         res_x = st.slider("Résolution grille x", 50, 200, 100, key="burgers_res")
     with col2:
-        t_max_b = st.slider("Temps max à afficher", 0.1, 1.0, 0.99, key="burgers_tmax")
+        t_max_b = st.slider("Temps max", 0.1, 1.0, 0.99, key="burgers_tmax")
 
     # Grille et prédiction
     x = np.linspace(-1, 1, res_x)
